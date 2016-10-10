@@ -30,7 +30,7 @@ You can also run it inside docker: `docker run -p 9049:9049 smyte/ratelimit`
 
 ### Example
 
-Start the compiled server (see [Running It](#running-it))
+Start the compiled server (see section on [running it](#running-it))
 
 Send it some traffic:
 ```
