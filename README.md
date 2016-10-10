@@ -19,7 +19,7 @@ The binary lives at `./bazel-bin/ratelimit/ratelimit`. It takes a few options:
 
 ## Supported commands
 * `RL.REDUCE key max refilltime [REFILL refillamount] [TAKE tokens] [AT timestamp]`: create a bucket identified by `key` if it does not exist that can hold up to `max` tokens and return the number of tokens remaining. Every `refilltime` seconds `refillamount` tokens will be added to the bucket up to `max`. If `refillamount` is not provided it defaults to `max`. If there are at least `tokens` remaining in the bucket it will return true and reduce the amount by `tokens`. If `tokens` is not provided it defaults to `1`. If you want to provide your own current timestamp for refills rather than use the server's clock you can pass a `timestamp`.
-* `RL.GET key max refilltime [REFILL refillamount] [TAKE tokens] [AT timestamp]`: same as `RL.REDUCE`, except `RL.GET` does not reduce the number of tokens in the bucket.
+* `RL.GET key max refilltime [REFILL refillamount] [AT timestamp]`: same as `RL.REDUCE`, except `RL.GET` does not reduce the number of tokens in the bucket.
 * `RL.PREDUCE`: same as `RL.REDUCE`, but uses milliseconds instead of seconds.
 * `RL.PGET`: same as `RL.GET`, but uses milliseconds instead of seconds.
 
