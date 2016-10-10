@@ -1,0 +1,9 @@
+# Contributing
+
+First of all: thanks for making a contribution.
+
+When contributing to this repository, please discuss the change you'd like to make via a GitHub issue before sending a pull request. This will save time for everyone involved.
+
+In addition to manual testing, we'd greatly prefer if you include unit tests along with your pull requests. Additionally, any pull request you send should not break existing tests.
+
+Finally, all Smyte open-source projects follow the latest [Contributor Covenant](http://contributor-covenant.org/version/1/4/). To report any violations of the code of conduct, email pete at smyte dot com.
