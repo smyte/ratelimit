@@ -1,6 +1,6 @@
 # ratelimit
 
-A high-performance rate limiter written in C++ that speaks Redis protocol.
+A high-performance rate limiter written in C++ that speaks Redis protocol. See our [blog post](https://medium.com/the-smyte-blog/rate-limiter-df3408325846) to learn more.
 
 ## Building from source
 
