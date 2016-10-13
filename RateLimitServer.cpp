@@ -6,23 +6,22 @@
 namespace ratelimit {
 
 static pipeline::RedisPipelineBootstrap::Config config{
-  redisHandlerFactory: [](const pipeline::RedisPipelineBootstrap::OptionalComponents& optionalComponents) {
+  redisHandlerFactory : [](const pipeline::RedisPipelineBootstrap::OptionalComponents& optionalComponents) {
     std::shared_ptr<pipeline::RedisHandler> handler = std::make_shared<RateLimitHandler>(
         optionalComponents.databaseManager);
     return handler;
   },
 
-  kafkaTailerFactory: nullptr,
+  kafkaTailerFactoryMap : {},
 
-  databaseManagerFactory: nullptr,
+  databaseManagerFactory : nullptr,
 
-  scheduledTaskQueueFactory: nullptr,
+  scheduledTaskQueueFactory : nullptr,
 
-  rocksDbConfiguratorMap: {
-    {
-      pipeline::RedisPipelineBootstrap::defaultColumnFamilyName(),
-      RateLimitHandler::optimizeColumnFamily,
-    },
+  rocksDbConfiguratorMap : {
+      {
+          pipeline::RedisPipelineBootstrap::defaultColumnFamilyName(), RateLimitHandler::optimizeColumnFamily,
+      },
   },
 };
 
