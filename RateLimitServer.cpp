@@ -20,7 +20,7 @@ static pipeline::RedisPipelineBootstrap::Config config{
 
   rocksDbConfiguratorMap : {
       {
-          pipeline::RedisPipelineBootstrap::defaultColumnFamilyName(), RateLimitHandler::optimizeColumnFamily,
+          pipeline::DatabaseManager::defaultColumnFamilyName(), RateLimitHandler::optimizeColumnFamily,
       },
   },
 };
