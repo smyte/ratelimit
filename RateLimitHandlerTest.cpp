@@ -1,5 +1,6 @@
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "codec/RedisValue.h"
@@ -49,10 +50,30 @@ TEST_F(RateLimitHandlerTest, EncodeDecodeRateLimitValue) {
   EXPECT_EQ(3 * sizeof(RateLimitHandler::RedisIntType), value.size());
 
   RateLimitHandler::ValueParams outputValueParams;
-  ASSERT_TRUE(RateLimitHandler::decodeRateLimitValue(value, &outputValueParams));
+  ASSERT_FALSE(RateLimitHandler::decodeRateLimitValue(std::string("1"), &outputValueParams, nullptr));
+  ASSERT_TRUE(RateLimitHandler::decodeRateLimitValue(value, &outputValueParams, nullptr));
   EXPECT_EQ(inputValueParams.amount, outputValueParams.amount);
   EXPECT_EQ(inputValueParams.lastRefilledAtMs, outputValueParams.lastRefilledAtMs);
   EXPECT_EQ(inputValueParams.lastReducedAtMs, outputValueParams.lastReducedAtMs);
+}
+
+TEST_F(RateLimitHandlerTest, EncodeDecodeRateLimitValueWithSession) {
+  std::string value;
+  RateLimitHandler::ValueParams inputValueParams{ 100, 10000, nowMs() };
+  RateLimitHandler::SessionParams inputSessionParams{ 15 };
+  RateLimitHandler::encodeRateLimitValue(inputValueParams, &value);
+  RateLimitHandler::encodeRateLimitValue(inputSessionParams, &value);
+  EXPECT_EQ(4 * sizeof(RateLimitHandler::RedisIntType), value.size());
+
+  RateLimitHandler::ValueParams outputValueParams;
+  ASSERT_TRUE(RateLimitHandler::decodeRateLimitValue(value, &outputValueParams, nullptr));
+  EXPECT_EQ(inputValueParams.amount, outputValueParams.amount);
+  EXPECT_EQ(inputValueParams.lastRefilledAtMs, outputValueParams.lastRefilledAtMs);
+  EXPECT_EQ(inputValueParams.lastReducedAtMs, outputValueParams.lastReducedAtMs);
+
+  RateLimitHandler::SessionParams outputSessionParams;
+  ASSERT_TRUE(RateLimitHandler::decodeRateLimitValue(value, &outputValueParams, &outputSessionParams));
+  EXPECT_EQ(inputSessionParams.sessionStartedAtMs, outputSessionParams.sessionStartedAtMs);
 }
 
 TEST_F(RateLimitHandlerTest, RateLimitCompactionFilterTrue) {
@@ -359,6 +380,45 @@ TEST_F(RateLimitHandlerTest, GetReduceCommands) {
   folly::split(" ", "rl.reduce a 10 5 at 23 refill 3 take 2 strict", cmd);
   EXPECT_CALL(handler, write(nullptr, codec::RedisValue(3))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.reduce", cmd, nullptr));
+}
+
+TEST_F(RateLimitHandlerTest, SessionizeCommands) {
+  MockRateLimitHandler handler(databaseManager());
+  std::vector<std::string> cmd;
+
+  // Start of a new session with 1 token left at time 0
+  std::vector<codec::RedisValue> result1 = {codec::RedisValue(1), codec::RedisValue(0)};
+  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result1)))).Times(1);
+  folly::split(" ", "rl.sessionize a 1 3600 at 0 STRICT", cmd);
+  EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
+
+  cmd.clear();
+  // continuation with the same session with token left
+  std::vector<codec::RedisValue> result2 = {codec::RedisValue(0), codec::RedisValue(0)};
+  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result2)))).Times(1);
+  folly::split(" ", "rl.sessionize a 1 3600 at 1 STRICT", cmd);
+  EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
+
+  cmd.clear();
+  // continuation with the same session with token left
+  std::vector<codec::RedisValue> result3 = {codec::RedisValue(0), codec::RedisValue(0)};
+  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result3)))).Times(1);
+  folly::split(" ", "rl.sessionize a 1 3600 at 1000 STRICT", cmd);
+  EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
+
+  cmd.clear();
+  // sessionization operates in strict mode so no refill even after 3600 seconds
+  std::vector<codec::RedisValue> result4 = {codec::RedisValue(0), codec::RedisValue(0)};
+  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result4)))).Times(1);
+  folly::split(" ", "rl.sessionize a 1 3600 at 3605 STRICT", cmd);
+  EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
+
+  cmd.clear();
+  // start of a new session with a one token left and a new timestamp
+  std::vector<codec::RedisValue> result5 = {codec::RedisValue(1), codec::RedisValue(7205000)};
+  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result5)))).Times(1);
+  folly::split(" ", "rl.sessionize a 1 3600 at 7205 STRICT", cmd);
+  EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
 }
 
 }  // namespace ratelimit

@@ -18,7 +18,7 @@ bool RateLimitCompactionFilter::Filter(int level, const rocksdb::Slice& key, con
   RateLimitHandler::KeyParams keyParams;
   CHECK(RateLimitHandler::decodeRateLimitKey(key, &keyParams)) << "RateLimit key in RocksDB is corrupted";
   RateLimitHandler::ValueParams valueParams;
-  CHECK(RateLimitHandler::decodeRateLimitValue(existingValue, &valueParams))
+  CHECK(RateLimitHandler::decodeRateLimitValue(existingValue, &valueParams, nullptr))
       << "RateLimit value in RocksDB is corrupted";
 
   RedisIntType nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(

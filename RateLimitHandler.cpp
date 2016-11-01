@@ -21,7 +21,8 @@
 namespace ratelimit {
 
 codec::RedisValue RateLimitHandler::getAndReduceTokens(const std::string& keyName, const RateLimitArgs& args,
-                                                       bool strict, Context* ctx) {
+                                                       bool strict, RateLimitHandler::SessionParams* sessionParams,
+                                                       Context* ctx) {
   RedisIntType adjustedAmount;
   // unlock ASAP (before writing the response to client)
   {
@@ -31,7 +32,7 @@ codec::RedisValue RateLimitHandler::getAndReduceTokens(const std::string& keyNam
 
     std::string key;
     RedisIntType newRefilledAtMs;
-    adjustedAmount = getAdjustedAmountFromDb(keyName, args, &key, &newRefilledAtMs);
+    adjustedAmount = getAdjustedAmountFromDb(keyName, args, &key, &newRefilledAtMs, sessionParams);
     if (args.tokenAmount > 0) {
       RedisIntType newAmount = std::max(adjustedAmount - args.tokenAmount, 0L);
       ValueParams valueParams{ newAmount, newRefilledAtMs, nowMs() };
@@ -40,6 +41,14 @@ codec::RedisValue RateLimitHandler::getAndReduceTokens(const std::string& keyNam
       if (strict && newAmount == 0) valueParams.lastRefilledAtMs = args.clientTimeMs;
       std::string valueBuf;
       rocksdb::Slice newValue = encodeRateLimitValue(valueParams, &valueBuf);
+      if (sessionParams) {
+        if (adjustedAmount >= args.tokenAmount) {
+          // Start a new session when there are enough tokens remain
+          // Once tokens are exhausted, subsequent requests will get the same sessionStartedAtMs until refill
+          sessionParams->sessionStartedAtMs = args.clientTimeMs;
+        }
+        newValue = encodeRateLimitValue(*sessionParams, &valueBuf);
+      }
       rocksdb::Status status = db()->Put(rocksdb::WriteOptions(), key, newValue);
       if (!status.ok()) {
         return errorResp(folly::sformat("RocksDB error: {}", status.ToString()));
@@ -52,7 +61,7 @@ codec::RedisValue RateLimitHandler::getAndReduceTokens(const std::string& keyNam
 
 RateLimitHandler::RedisIntType RateLimitHandler::getAdjustedAmountFromDb(
     const std::string& keyName, const RateLimitHandler::RateLimitArgs& args, std::string* keyBuf,
-    RateLimitHandler::RedisIntType* newRefilledAtMs) {
+    RateLimitHandler::RedisIntType* newRefilledAtMs, RateLimitHandler::SessionParams* sessionParams) {
   KeyParams keyParams{ args.maxAmount, args.refillAmount, args.refillTimeMs };
   rocksdb::Slice key = encodeRateLimitKey(keyName, keyParams, keyBuf);
 
@@ -60,7 +69,8 @@ RateLimitHandler::RedisIntType RateLimitHandler::getAdjustedAmountFromDb(
   rocksdb::Status status = db()->Get(rocksdb::ReadOptions(), key, &encodedValue);
   if (status.ok()) {
     ValueParams valueParams;
-    CHECK(decodeRateLimitValue(encodedValue, &valueParams)) << "RateLimit value in RocksDB is corrupted";
+    CHECK(decodeRateLimitValue(encodedValue, &valueParams, sessionParams))
+        << "RateLimit value in RocksDB is corrupted";
     return adjustAmount(valueParams.amount, valueParams.lastRefilledAtMs, args, newRefilledAtMs);
   } else {
     if (!status.IsNotFound()) {
@@ -151,19 +161,16 @@ bool RateLimitHandler::decodeRateLimitKey(const rocksdb::Slice& encodedKey, Rate
   return true;
 }
 
-rocksdb::Slice RateLimitHandler::encodeRateLimitValue(const RateLimitHandler::ValueParams& params,
-                                                      std::string* valueBuf) {
-  // use fixed-length encoding to be consistent with key encoding, variable-length encoding may save a few bytes here
-  valueBuf->append(reinterpret_cast<const char *>(&params), sizeof(params));
-  return rocksdb::Slice(*valueBuf);
-}
-
-bool RateLimitHandler::decodeRateLimitValue(const rocksdb::Slice& encodedValue,
-                                            RateLimitHandler::ValueParams* params) {
-  if (encodedValue.size() != sizeof(RateLimitHandler::ValueParams)) return false;
+bool RateLimitHandler::decodeRateLimitValue(const rocksdb::Slice& encodedValue, RateLimitHandler::ValueParams* params,
+                                            RateLimitHandler::SessionParams* sessionParams) {
+  if (encodedValue.size() < sizeof(ValueParams)) return false;
   // assume native endian here, which means we cannot ship encodedValue across different machine architectures
   // this is the fastest way of for fixed-length encoding
   std::memcpy(params, encodedValue.data_, sizeof(RateLimitHandler::ValueParams));
+  if (sessionParams) {
+    if (encodedValue.size() != sizeof(ValueParams) + sizeof(SessionParams)) return false;
+    std::memcpy(sessionParams, encodedValue.data_ + sizeof(ValueParams), sizeof(SessionParams));
+  }
   return true;
 }
 
