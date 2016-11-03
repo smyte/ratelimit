@@ -8,7 +8,7 @@ cc_binary(
         "//pipeline:redis_pipeline_bootstrap",
     ],
     copts = [
-        "-std=c++11",
+        "-std=c++14",
     ],
 )
 
@@ -32,8 +32,7 @@ cc_library(
         "//pipeline:redis_handler",
     ],
     copts = [
-        "-std=c++11",
-        "-Wno-sign-compare",
+        "-std=c++14",
     ],
 )
 
@@ -52,5 +51,8 @@ cc_test(
         "//external:rocksdb",
         "//external:wangle",
         "//stesting:test_helpers",
+    ],
+    copts = [
+        "-std=c++14",
     ],
 )
