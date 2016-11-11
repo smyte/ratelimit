@@ -5,7 +5,7 @@ A high-performance rate limiter written in C++ that speaks Redis protocol. See o
 ## Building from source
 
 * Ensure [Bazel](https://www.bazel.io/) is installed
-* Check out the [cpp-build](https://github.com/smyte/cpp-build) repo
+* Check out the [smyte-db](https://github.com/smyte/smyte-db) repo
 * Ensure your submodules are up-to-date: `git submodule update`
 * Build the project: `bazel build -c opt ratelimit`
 
