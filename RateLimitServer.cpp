@@ -6,10 +6,8 @@
 namespace ratelimit {
 
 static pipeline::RedisPipelineBootstrap::Config config{
-  redisHandlerFactory : [](const pipeline::RedisPipelineBootstrap::OptionalComponents& optionalComponents) {
-    std::shared_ptr<pipeline::RedisHandler> handler = std::make_shared<RateLimitHandler>(
-        optionalComponents.databaseManager);
-    return handler;
+  redisHandlerFactory : [](pipeline::RedisPipelineBootstrap* bootstrap) -> std::shared_ptr<pipeline::RedisHandler> {
+    return std::make_shared<RateLimitHandler>(bootstrap->getDatabaseManager());
   },
 
   kafkaTailerFactoryMap : {},
