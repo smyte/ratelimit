@@ -16,7 +16,7 @@ static pipeline::RedisPipelineBootstrap::Config config{
 
   scheduledTaskQueueFactory : nullptr,
 
-  rocksDbConfiguratorMap : {
+  rocksDbCfConfiguratorMap : {
       {
           pipeline::DatabaseManager::defaultColumnFamilyName(), RateLimitHandler::optimizeColumnFamily,
       },
