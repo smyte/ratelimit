@@ -3,7 +3,7 @@
 #include <utility>
 #include <vector>
 
-#include "codec/RedisValue.h"
+#include "codec/RedisMessage.h"
 #include "folly/String.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -18,6 +18,11 @@ namespace ratelimit {
 class RateLimitHandlerTest : public stesting::TestWithRocksDb {
  protected:
   RateLimitHandlerTest() : stesting::TestWithRocksDb({}, { {"default", RateLimitHandler::optimizeColumnFamily}}) {}
+
+  // Ratelimit does not support async command handling, so use default key
+  codec::RedisMessage getRedisMessage(codec::RedisValue&& val) {
+    return codec::RedisMessage(std::move(val));
+  }
 };
 
 class MockRateLimitHandler : public RateLimitHandler {
@@ -25,7 +30,12 @@ class MockRateLimitHandler : public RateLimitHandler {
   explicit MockRateLimitHandler(std::shared_ptr<pipeline::DatabaseManager> databaseManager)
       : RateLimitHandler(databaseManager) {}
 
-  MOCK_METHOD2(write, folly::Future<folly::Unit>(Context*, codec::RedisValue));
+  MOCK_METHOD2(write, folly::Future<folly::Unit>(Context*, codec::RedisMessage));
+
+  // Ratelimit does not support async command handling, so use default key
+  bool handleCommand(const std::string& cmdNameLower, const std::vector<std::string>& cmd, Context* ctx) {
+    return RateLimitHandler::handleCommand(0L, cmdNameLower, cmd, ctx);
+  }
 };
 
 TEST_F(RateLimitHandlerTest, EncodeDecodeRateLimitKey) {
@@ -288,97 +298,97 @@ TEST_F(RateLimitHandlerTest, GetReduceCommands) {
   MockRateLimitHandler handler(databaseManager());
   std::vector<std::string> cmd;
   // have 10 left initially, and reduce 1 by default
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(10))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(10)))).Times(1);
   folly::split(" ", "rl.reduce a 10 5 refill 3 at 2", cmd);
   EXPECT_TRUE(handler.handleCommand("rl.reduce", cmd, nullptr));
 
   // reduce 1 by default
   cmd.clear();
   folly::split(" ", "rl.preduce a 10 5000 at 2000 refill 3", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(9))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(9)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.preduce", cmd, nullptr));
 
   // 8 left after two reduces
   cmd.clear();
   folly::split(" ", "rl.get a 10 5 at 2 refill 3", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(8))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(8)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.get", cmd, nullptr));
   // `p` version has the same result
   cmd.clear();
   folly::split(" ", "rl.pget a 10 5000 refill 3 at 2000", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(8))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(8)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.pget", cmd, nullptr));
 
   // reduce by an explicit amount
   cmd.clear();
   folly::split(" ", "rl.reduce a 10 5 at 2 refill 3 take 5", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(8))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(8)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.reduce", cmd, nullptr));
 
   // 3 left after reduce by 5, reduce by an explicit amount
   cmd.clear();
   folly::split(" ", "rl.preduce a 10 5000 refill 3 take 5 at 2000", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(3))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(3)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.preduce", cmd, nullptr));
 
   // not enough left after the second reduce 5
   cmd.clear();
   folly::split(" ", "rl.get a 10 5 at 2 refill 3", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(0))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(0)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.get", cmd, nullptr));
 
   // refill with 3
   cmd.clear();
   folly::split(" ", "rl.get a 10 5 at 8 refill 3", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(3))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(3)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.get", cmd, nullptr));
 
   // reduce 2 after refill
   cmd.clear();
   folly::split(" ", "rl.reduce a 10 5 at 8 take 2 refill 3", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(3))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(3)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.reduce", cmd, nullptr));
 
   // 1 left after reduce and take them all
   cmd.clear();
   folly::split(" ", "rl.preduce a 10 5000 at 8000 refill 3", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(1))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(1)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.preduce", cmd, nullptr));
 
   // nothing left
   cmd.clear();
   folly::split(" ", "rl.preduce a 10 5000 at 9000 refill 3", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(0))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(0)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.preduce", cmd, nullptr));
 
   // get refilled again
   cmd.clear();
   folly::split(" ", "rl.get a 10 5 at 13 refill 3", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(3))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(3)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.get", cmd, nullptr));
 
   // drain the bucket in strict mode
   cmd.clear();
   folly::split(" ", "rl.reduce a 10 5 at 14 refill 3 take 4 strict", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(3))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(3)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.reduce", cmd, nullptr));
 
   // no token left before next refill
   cmd.clear();
   folly::split(" ", "rl.reduce a 10 5 at 16 refill 3 take 4 strict", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(0))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(0)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.reduce", cmd, nullptr));
 
   // still no token left after next refill time in strict mode
   cmd.clear();
   folly::split(" ", "rl.reduce a 10 5 at 18 refill 3 take 1 strict", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(0))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(0)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.reduce", cmd, nullptr));
 
   // refill again once waited the full refill time
   cmd.clear();
   folly::split(" ", "rl.reduce a 10 5 at 23 refill 3 take 2 strict", cmd);
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(3))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(3)))).Times(1);
   EXPECT_TRUE(handler.handleCommand("rl.reduce", cmd, nullptr));
 }
 
@@ -388,35 +398,35 @@ TEST_F(RateLimitHandlerTest, SessionizeCommands) {
 
   // Start of a new session with 1 token left at time 0
   std::vector<codec::RedisValue> result1 = {codec::RedisValue(1), codec::RedisValue(0)};
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result1)))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(std::move(result1))))).Times(1);
   folly::split(" ", "rl.sessionize a 1 3600 at 0 STRICT", cmd);
   EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
 
   cmd.clear();
   // continuation with the same session with token left
   std::vector<codec::RedisValue> result2 = {codec::RedisValue(0), codec::RedisValue(0)};
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result2)))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(std::move(result2))))).Times(1);
   folly::split(" ", "rl.sessionize a 1 3600 at 1 STRICT", cmd);
   EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
 
   cmd.clear();
   // continuation with the same session with token left
   std::vector<codec::RedisValue> result3 = {codec::RedisValue(0), codec::RedisValue(0)};
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result3)))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(std::move(result3))))).Times(1);
   folly::split(" ", "rl.sessionize a 1 3600 at 1000 STRICT", cmd);
   EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
 
   cmd.clear();
   // sessionization operates in strict mode so no refill even after 3600 seconds
   std::vector<codec::RedisValue> result4 = {codec::RedisValue(0), codec::RedisValue(0)};
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result4)))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(std::move(result4))))).Times(1);
   folly::split(" ", "rl.sessionize a 1 3600 at 3605 STRICT", cmd);
   EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
 
   cmd.clear();
   // start of a new session with a one token left and a new timestamp
   std::vector<codec::RedisValue> result5 = {codec::RedisValue(1), codec::RedisValue(7205000)};
-  EXPECT_CALL(handler, write(nullptr, codec::RedisValue(std::move(result5)))).Times(1);
+  EXPECT_CALL(handler, write(nullptr, getRedisMessage(codec::RedisValue(std::move(result5))))).Times(1);
   folly::split(" ", "rl.sessionize a 1 3600 at 7205 STRICT", cmd);
   EXPECT_TRUE(handler.handleCommand("rl.sessionize", cmd, nullptr));
 }
