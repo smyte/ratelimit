@@ -14,7 +14,7 @@ static pipeline::RedisPipelineBootstrap::Config config{
 
   databaseManagerFactory : nullptr,
 
-  scheduledTaskQueueFactory : nullptr,
+  scheduledTaskProcessorFactoryMap : {},
 
   rocksDbCfConfiguratorMap : {
       {
