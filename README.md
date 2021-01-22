@@ -1,5 +1,7 @@
 # ratelimit
 
+**No longer maintained:** Please note that this code is no longer being actively maintained.
+
 A high-performance rate limiter written in C++ that speaks Redis protocol. See our [blog post](https://medium.com/the-smyte-blog/rate-limiter-df3408325846) to learn more.
 
 ## Building from source
